@@ -67,3 +67,11 @@ set(RANDOM_CUDA_PAIR_BENCH_SRC
   "${CMAKE_CURRENT_SOURCE_DIR}/random/random_pair.cu")
 
 ConfigureBench(PAIR_RANDOM_CUDA_BENCH "${RANDOM_CUDA_PAIR_BENCH_SRC}")
+
+###################################################################################################
+# - map proxy benchmark --------------------------------------------------------------------------------
+
+set(MAP_PROXY_SRC
+  "${CMAKE_CURRENT_SOURCE_DIR}/map/map_proxy.cu")
+
+ConfigureBench(MAP_PROXY "${MAP_PROXY_SRC}")
