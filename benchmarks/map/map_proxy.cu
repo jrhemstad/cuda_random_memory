@@ -28,7 +28,7 @@ __global__ void find(Slot<K, V> const *slots, std::size_t num_slots, K const *k,
   auto tid = threadIdx.x + blockIdx.x * blockDim.x;
   if (tid < num_keys) {
     auto const my_key = k[tid];
-    auto const key_hash = MurmurHash3_32<K>{}(my_key); // Fake identity hash
+    auto const key_hash = MurmurHash3_32<K>{}(my_key);
     auto slot_index = key_hash % num_slots;
     while (true) {
       auto const current_slot = &slots[slot_index];
