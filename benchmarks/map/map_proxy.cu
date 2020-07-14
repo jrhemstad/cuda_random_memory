@@ -33,8 +33,7 @@ __global__ void find(Slot<K, V> const *slots, std::size_t num_slots, K const *k,
     while (true) {
       auto const current_slot = &slots[slot_index];
       auto const existing_key = current_slot->first.load(K_mem_order);
-      // auto const existing_key = reinterpret_cast<K
-      // const&>(current_slot->first);
+
       // Matching key
       if (existing_key == my_key) {
         output[tid] = current_slot->second.load(V_mem_order);
