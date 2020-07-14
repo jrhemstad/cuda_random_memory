@@ -61,3 +61,9 @@ set(RANDOM_CUDA_BENCH_SRC
 ConfigureBench(RANDOM_CUDA_BENCH "${RANDOM_CUDA_BENCH_SRC}")
 
 ###################################################################################################
+# - random CUDA pair benchmark --------------------------------------------------------------------------------
+
+set(RANDOM_CUDA_PAIR_BENCH_SRC
+  "${CMAKE_CURRENT_SOURCE_DIR}/random/random_pair.cu")
+
+ConfigureBench(PAIR_RANDOM_CUDA_BENCH "${RANDOM_CUDA_PAIR_BENCH_SRC}")
