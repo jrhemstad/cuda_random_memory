@@ -26,11 +26,14 @@ void BM_weak_sequential(benchmark::State &state) {
                           int64_t(state.range(0)) * 2 *
                           sizeof(thrust::pair<First, Second>));
 }
+
+/*
 BENCHMARK_TEMPLATE(BM_weak_sequential, int32_t, int32_t)
     ->RangeMultiplier(10)
-    ->Range(100'000, 1'000'000'000)
+    ->Range(100'000, 100'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
+*/
 
 template <typename First, typename Second>
 void BM_weak_random(benchmark::State &state) {
@@ -61,11 +64,58 @@ void BM_weak_random(benchmark::State &state) {
                           int64_t(state.range(0)) * 2 *
                           sizeof(thrust::pair<First, Second>));
 }
+
+/*
 BENCHMARK_TEMPLATE(BM_weak_random, int32_t, int32_t)
     ->RangeMultiplier(10)
-    ->Range(100'000, 1'000'000'000)
+    ->Range(100'000, 100'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
+*/
+
+template <typename First, typename Second>
+void BM_weak_random_probing(benchmark::State &state) {
+
+  thrust::device_vector<thrust::pair<First, Second>> input(state.range(0));
+  thrust::device_vector<First> output(input.size());
+
+  auto l = [input_size = input.size()] __device__(auto i) {
+    thrust::default_random_engine rng;
+    thrust::uniform_int_distribution<int32_t> dist(0, input_size);
+    rng.discard(i);
+    return dist(rng);
+  };
+
+  auto const random_begin = thrust::make_transform_iterator(
+      thrust::make_counting_iterator<int32_t>(0), l);
+  auto const random_end = random_begin + input.size();
+
+  for (auto _ : state) {
+    cuda_event_timer raii{state};
+    thrust::transform(
+        thrust::device, random_begin, random_end, output.begin(),
+        [input_data = input.data().get(), size = input.size()] __device__(auto random_index) {
+          uint32_t count = 0;
+          for(auto i = 0; i < 4; ++i) {
+            count += input_data[random_index].first;
+            random_index = (random_index + 1) % size;
+          }
+          count += input_data[random_index].first;
+          count += input_data[random_index].second;
+          return count;
+        });
+  }
+  state.SetBytesProcessed(int64_t(state.iterations()) *
+                          int64_t(state.range(0)) * 2 *
+                          sizeof(thrust::pair<First, Second>));
+}
+
+BENCHMARK_TEMPLATE(BM_weak_random_probing, int32_t, int32_t)
+    ->RangeMultiplier(10)
+    ->Range(100'000'000, 100'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
+
 
 template <typename T> using Atomic = cuda::atomic<T, cuda::thread_scope_device>;
 
@@ -93,6 +143,7 @@ void BM_atomic_sequential(benchmark::State &state) {
                           int64_t(state.range(0)) * 2 *
                           sizeof(thrust::pair<First, Second>));
 }
+/*
 BENCHMARK_TEMPLATE(BM_atomic_sequential, int32_t, int32_t, RELAXED, RELAXED)
     ->RangeMultiplier(10)
     ->Range(100'000, 1'000'000'000)
@@ -116,6 +167,7 @@ BENCHMARK_TEMPLATE(BM_atomic_sequential, int32_t, int32_t, SEQCST, SEQCST)
     ->Range(100'000, 1'000'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
+*/
 
 template <typename First, typename Second, cuda::std::memory_order F_mem_order,
           cuda::std::memory_order S_mem_order>
@@ -151,24 +203,88 @@ void BM_atomic_random(benchmark::State &state) {
                           int64_t(state.range(0)) * 2 *
                           sizeof(thrust::pair<First, Second>));
 }
+/*
 BENCHMARK_TEMPLATE(BM_atomic_random, int32_t, int32_t, RELAXED, RELAXED)
     ->RangeMultiplier(10)
-    ->Range(100'000, 1'000'000'000)
+    ->Range(100'000, 100'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(BM_atomic_random, int32_t, int32_t, SEQCST, RELAXED)
     ->RangeMultiplier(10)
-    ->Range(100'000, 1'000'000'000)
+    ->Range(100'000, 100'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(BM_atomic_random, int32_t, int32_t, RELAXED, SEQCST)
     ->RangeMultiplier(10)
-    ->Range(100'000, 1'000'000'000)
+    ->Range(100'000, 100'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
 BENCHMARK_TEMPLATE(BM_atomic_random, int32_t, int32_t, SEQCST, SEQCST)
     ->RangeMultiplier(10)
-    ->Range(100'000, 1'000'000'000)
+    ->Range(100'000, 100'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
+*/
+
+template <typename First, typename Second, cuda::std::memory_order F_mem_order,
+          cuda::std::memory_order S_mem_order>
+void BM_atomic_random_probing(benchmark::State &state) {
+
+  thrust::device_vector<thrust::pair<Atomic<First>, Atomic<Second>>> input(
+      state.range(0));
+  thrust::device_vector<First> output(input.size());
+
+  auto l = [input_size = input.size()] __device__(auto i) {
+    thrust::default_random_engine rng;
+    thrust::uniform_int_distribution<int32_t> dist(0, input_size);
+    rng.discard(i);
+    return dist(rng);
+  };
+
+  auto const random_begin = thrust::make_transform_iterator(
+      thrust::make_counting_iterator<int32_t>(0), l);
+  auto const random_end = random_begin + input.size();
+
+  for (auto _ : state) {
+    cuda_event_timer raii{state};
+    thrust::transform(
+        thrust::device, random_begin, random_end, output.begin(),
+        [input_data = input.data().get(), size = input.size()] __device__(auto random_index) {
+          
+          uint32_t count = 0;
+
+          for(auto i = 0; i < 4; ++i) {
+            count += input_data[random_index].first.load(F_mem_order);
+            random_index = (random_index + 1) % size;
+          }
+          count += input_data[random_index].first.load(F_mem_order);
+          count += input_data[random_index].second.load(S_mem_order);
+          return count;
+        });
+  }
+  state.SetBytesProcessed(int64_t(state.iterations()) *
+                          int64_t(state.range(0)) * 2 *
+                          sizeof(thrust::pair<First, Second>));
+}
+
+BENCHMARK_TEMPLATE(BM_atomic_random_probing, int32_t, int32_t, RELAXED, RELAXED)
+    ->RangeMultiplier(10)
+    ->Range(100'000'000, 100'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(BM_atomic_random_probing, int32_t, int32_t, SEQCST, RELAXED)
+    ->RangeMultiplier(10)
+    ->Range(100'000'000, 100'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(BM_atomic_random_probing, int32_t, int32_t, RELAXED, SEQCST)
+    ->RangeMultiplier(10)
+    ->Range(100'000'000, 100'000'000)
+    ->UseManualTime()
+    ->Unit(benchmark::kMillisecond);
+BENCHMARK_TEMPLATE(BM_atomic_random_probing, int32_t, int32_t, SEQCST, SEQCST)
+    ->RangeMultiplier(10)
+    ->Range(100'000'000, 100'000'000)
     ->UseManualTime()
     ->Unit(benchmark::kMillisecond);
 
