@@ -21,11 +21,14 @@ template <typename K, typename V>
 using Slot = thrust::pair<Atomic<K>, Atomic<V>>;
 
 template <cuda::std::memory_order K_mem_order,
-          cuda::std::memory_order V_mem_order, typename K, typename V>
+          cuda::std::memory_order V_mem_order, std::size_t block_size,
+          typename K, typename V>
 __global__ void find(Slot<K, V> const *slots, std::size_t num_slots, K const *k,
                      V *output, std::size_t num_keys, K empty_key,
                      V empty_value) {
   auto tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+  __shared__ V buffer[block_size];
   if (tid < num_keys) {
     auto const my_key = k[tid];
     auto const key_hash = MurmurHash3_32<K>{}(my_key);
@@ -36,16 +39,23 @@ __global__ void find(Slot<K, V> const *slots, std::size_t num_slots, K const *k,
 
       // Matching key
       if (existing_key == my_key) {
-        output[tid] = current_slot->second.load(V_mem_order);
+        // output[tid] = current_slot->second.load(V_mem_order);
+        buffer[threadIdx.x] = current_slot->second.load(V_mem_order);
         break;
       }
       // Empty slot. Key doesn't exist
       if (existing_key == empty_key) {
-        output[tid] = empty_value;
+        // output[tid] = empty_value;
+        buffer[threadIdx.x] = empty_value;
         break;
       }
       slot_index = (slot_index + 1) % num_slots;
     }
+  }
+  __syncthreads();
+
+  if (tid < num_keys) {
+    output[tid] = buffer[threadIdx.x];
   }
 }
 
@@ -137,7 +147,7 @@ void BM_map_proxy(benchmark::State &state) {
     cuda_event_timer raii{state};
     constexpr auto block_size{128};
     auto grid_size = (num_keys + block_size - 1) / block_size;
-    find<K_mem_order, V_mem_order><<<grid_size, block_size>>>(
+    find<K_mem_order, V_mem_order, block_size><<<grid_size, block_size>>>(
         slots.data().get(), num_slots, keys.data().get(),
         output_values.data().get(), num_keys, empty_key, empty_value);
   }
